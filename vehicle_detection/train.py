@@ -1,14 +1,14 @@
 
 import argparse
 
+from .utils.trainer import Trainer
+from .utils.rotated_trainer import RotatedTrainer
 
 import json
 import numpy as np
 import os
 import random
 from detectron2.engine import DefaultTrainer, hooks
-from utils.trainer import Trainer
-from utils.rotated_trainer import RotatedTrainer
 from detectron2.config import get_cfg
 from detectron2.utils.visualizer import ColorMode
 from detectron2.engine import DefaultPredictor
@@ -50,6 +50,68 @@ resume = args.resume
 dataset_mode = args.dataset_mode
 max_iter = args.max_iter
 
+def get_radar_dicts(folders):
+    dataset_dicts = []
+    idd = 0
+    folder_size = len(folders)
+    for folder in folders:
+        radar_folder = os.path.join(root_dir, folder, 'Navtech_Cartesian')
+        annotation_path = os.path.join(root_dir,
+                                       folder, 'annotations', 'annotations.json')
+        with open(annotation_path, 'r') as f_annotation:
+            annotation = json.load(f_annotation)
+
+        radar_files = os.listdir(radar_folder)
+        radar_files.sort()
+        for frame_number in range(len(radar_files)):
+            record = {}
+            objs = []
+            bb_created = False
+            idd += 1
+            filename = os.path.join(
+                radar_folder, radar_files[frame_number])
+
+            if (not os.path.isfile(filename)):
+                print(filename)
+                continue
+            record["file_name"] = filename
+            record["image_id"] = idd
+            record["height"] = 1152
+            record["width"] = 1152
+
+            for object in annotation:
+                if (object['bboxes'][frame_number]):
+                    class_obj = object['class_name']
+                    if (class_obj != 'pedestrian' and class_obj != 'group_of_pedestrians'):
+                        bbox = object['bboxes'][frame_number]['position']
+                        angle = object['bboxes'][frame_number]['rotation']
+                        bb_created = True
+                        if cfg.MODEL.PROPOSAL_GENERATOR.NAME == "RRPN":
+                            cx = bbox[0] + bbox[2] / 2
+                            cy = bbox[1] + bbox[3] / 2
+                            wid = bbox[2]
+                            hei = bbox[3]
+                            obj = {
+                                "bbox": [cx, cy, wid, hei, angle],
+                                "bbox_mode": BoxMode.XYWHA_ABS,
+                                "category_id": 0,
+                                "iscrowd": 0
+                            }
+                        else:
+                            xmin, ymin, xmax, ymax = gen_boundingbox(
+                                bbox, angle)
+                            obj = {
+                                "bbox": [xmin, ymin, xmax, ymax],
+                                "bbox_mode": BoxMode.XYXY_ABS,
+                                "category_id": 0,
+                                "iscrowd": 0
+                            }
+
+                        objs.append(obj)
+            if bb_created:
+                record["annotations"] = objs
+                dataset_dicts.append(record)
+    return dataset_dicts
 
 def train(model_name, root_dir, dataset_mode, max_iter):
 
@@ -93,69 +155,6 @@ def train(model_name, root_dir, dataset_mode, max_iter):
         max_y = np.max(points[1, :])
 
         return min_x, min_y, max_x, max_y
-
-    def get_radar_dicts(folders):
-        dataset_dicts = []
-        idd = 0
-        folder_size = len(folders)
-        for folder in folders:
-            radar_folder = os.path.join(root_dir, folder, 'Navtech_Cartesian')
-            annotation_path = os.path.join(root_dir,
-                                           folder, 'annotations', 'annotations.json')
-            with open(annotation_path, 'r') as f_annotation:
-                annotation = json.load(f_annotation)
-
-            radar_files = os.listdir(radar_folder)
-            radar_files.sort()
-            for frame_number in range(len(radar_files)):
-                record = {}
-                objs = []
-                bb_created = False
-                idd += 1
-                filename = os.path.join(
-                    radar_folder, radar_files[frame_number])
-
-                if (not os.path.isfile(filename)):
-                    print(filename)
-                    continue
-                record["file_name"] = filename
-                record["image_id"] = idd
-                record["height"] = 1152
-                record["width"] = 1152
-
-                for object in annotation:
-                    if (object['bboxes'][frame_number]):
-                        class_obj = object['class_name']
-                        if (class_obj != 'pedestrian' and class_obj != 'group_of_pedestrians'):
-                            bbox = object['bboxes'][frame_number]['position']
-                            angle = object['bboxes'][frame_number]['rotation']
-                            bb_created = True
-                            if cfg.MODEL.PROPOSAL_GENERATOR.NAME == "RRPN":
-                                cx = bbox[0] + bbox[2] / 2
-                                cy = bbox[1] + bbox[3] / 2
-                                wid = bbox[2]
-                                hei = bbox[3]
-                                obj = {
-                                    "bbox": [cx, cy, wid, hei, angle],
-                                    "bbox_mode": BoxMode.XYWHA_ABS,
-                                    "category_id": 0,
-                                    "iscrowd": 0
-                                }
-                            else:
-                                xmin, ymin, xmax, ymax = gen_boundingbox(
-                                    bbox, angle)
-                                obj = {
-                                    "bbox": [xmin, ymin, xmax, ymax],
-                                    "bbox_mode": BoxMode.XYXY_ABS,
-                                    "category_id": 0,
-                                    "iscrowd": 0
-                                }
-
-                            objs.append(obj)
-                if bb_created:
-                    record["annotations"] = objs
-                    dataset_dicts.append(record)
-        return dataset_dicts
 
     dataset_train_name = dataset_mode + '_train'
     dataset_test_name = dataset_mode + '_test'
