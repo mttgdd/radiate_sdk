@@ -50,7 +50,31 @@ resume = args.resume
 dataset_mode = args.dataset_mode
 max_iter = args.max_iter
 
-def get_radar_dicts(folders):
+def gen_boundingbox(bbox, angle):
+    theta = np.deg2rad(-angle)
+    R = np.array([[np.cos(theta), -np.sin(theta)],
+                  [np.sin(theta), np.cos(theta)]])
+    points = np.array([[bbox[0], bbox[1]],
+                       [bbox[0] + bbox[2], bbox[1]],
+                       [bbox[0] + bbox[2], bbox[1] + bbox[3]],
+                       [bbox[0], bbox[1] + bbox[3]]]).T
+
+    cx = bbox[0] + bbox[2] / 2
+    cy = bbox[1] + bbox[3] / 2
+    T = np.array([[cx], [cy]])
+
+    points = points - T
+    points = np.matmul(R, points) + T
+    points = points.astype(int)
+
+    min_x = np.min(points[0, :])
+    min_y = np.min(points[1, :])
+    max_x = np.max(points[0, :])
+    max_y = np.max(points[1, :])
+
+    return min_x, min_y, max_x, max_y
+
+def get_radar_dicts(cfg, folders):
     dataset_dicts = []
     idd = 0
     folder_size = len(folders)
@@ -132,40 +156,8 @@ def train(model_name, root_dir, dataset_mode, max_iter):
         elif meta["set"] == "test":
             folders_test.append(curr_dir)
 
-    def gen_boundingbox(bbox, angle):
-        theta = np.deg2rad(-angle)
-        R = np.array([[np.cos(theta), -np.sin(theta)],
-                      [np.sin(theta), np.cos(theta)]])
-        points = np.array([[bbox[0], bbox[1]],
-                           [bbox[0] + bbox[2], bbox[1]],
-                           [bbox[0] + bbox[2], bbox[1] + bbox[3]],
-                           [bbox[0], bbox[1] + bbox[3]]]).T
-
-        cx = bbox[0] + bbox[2] / 2
-        cy = bbox[1] + bbox[3] / 2
-        T = np.array([[cx], [cy]])
-
-        points = points - T
-        points = np.matmul(R, points) + T
-        points = points.astype(int)
-
-        min_x = np.min(points[0, :])
-        min_y = np.min(points[1, :])
-        max_x = np.max(points[0, :])
-        max_y = np.max(points[1, :])
-
-        return min_x, min_y, max_x, max_y
-
     dataset_train_name = dataset_mode + '_train'
     dataset_test_name = dataset_mode + '_test'
-
-    DatasetCatalog.register(dataset_train_name,
-                            lambda: get_radar_dicts(folders_train))
-    MetadataCatalog.get(dataset_train_name).set(thing_classes=["vehicle"])
-
-    DatasetCatalog.register(dataset_test_name,
-                            lambda: get_radar_dicts(folders_test))
-    MetadataCatalog.get(dataset_test_name).set(thing_classes=["vehicle"])
 
     cfg_file = os.path.join('test', 'config', model_name + '.yaml')
     cfg = get_cfg()
@@ -182,6 +174,14 @@ def train(model_name, root_dir, dataset_mode, max_iter):
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1
     cfg.MODEL.ROI_HEADS.NMS_THRESH_TEST = 0.2
     cfg.MODEL.ANCHOR_GENERATOR.SIZES = [[8, 16, 32, 64, 128]]
+
+    DatasetCatalog.register(dataset_train_name,
+                            lambda: get_radar_dicts(cfg, folders_train))
+    MetadataCatalog.get(dataset_train_name).set(thing_classes=["vehicle"])
+
+    DatasetCatalog.register(dataset_test_name,
+                            lambda: get_radar_dicts(cfg, folders_test))
+    MetadataCatalog.get(dataset_test_name).set(thing_classes=["vehicle"])
 
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
     if cfg.MODEL.PROPOSAL_GENERATOR.NAME == "RRPN":
