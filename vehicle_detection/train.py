@@ -20,36 +20,6 @@ from detectron2.evaluation import (
     RotatedCOCOEvaluator)
 
 
-# init params
-parser = argparse.ArgumentParser()
-parser.add_argument("--model_name", help="Model Name (Ex: faster_rcnn_R_50_FPN_3x)",
-                    default='faster_rcnn_R_50_FPN_3x',
-                    type=str)
-
-parser.add_argument("--root_folder", help="root folder with radiate dataset",
-                    default='../data/radiate/',
-                    type=str)
-
-parser.add_argument("--max_iter", help="Maximum number of iterations",
-                    default=90000,
-                    type=int)
-
-parser.add_argument("--resume", help="Whether to resume training or not",
-                    default=False,
-                    type=bool)
-
-parser.add_argument("--dataset_mode", help="dataset mode ('good_weather', 'good_and_bad_weather')",
-                    default='good_weather',
-                    type=str)
-
-# parse arguments
-args = parser.parse_args()
-model_name = args.model_name
-root_dir = args.root_folder
-resume = args.resume
-dataset_mode = args.dataset_mode
-max_iter = args.max_iter
-
 def gen_boundingbox(bbox, angle):
     theta = np.deg2rad(-angle)
     R = np.array([[np.cos(theta), -np.sin(theta)],
@@ -74,7 +44,7 @@ def gen_boundingbox(bbox, angle):
 
     return min_x, min_y, max_x, max_y
 
-def get_radar_dicts(cfg, folders):
+def get_radar_dicts(cfg, folders, root_dir):
     dataset_dicts = []
     idd = 0
     folder_size = len(folders)
@@ -176,11 +146,11 @@ def train(model_name, root_dir, dataset_mode, max_iter):
     cfg.MODEL.ANCHOR_GENERATOR.SIZES = [[8, 16, 32, 64, 128]]
 
     DatasetCatalog.register(dataset_train_name,
-                            lambda: get_radar_dicts(cfg, folders_train))
+                            lambda: get_radar_dicts(cfg, folders_train, root_dir))
     MetadataCatalog.get(dataset_train_name).set(thing_classes=["vehicle"])
 
     DatasetCatalog.register(dataset_test_name,
-                            lambda: get_radar_dicts(cfg, folders_test))
+                            lambda: get_radar_dicts(cfg, folders_test, root_dir))
     MetadataCatalog.get(dataset_test_name).set(thing_classes=["vehicle"])
 
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
@@ -194,4 +164,35 @@ def train(model_name, root_dir, dataset_mode, max_iter):
 
 
 if __name__ == "__main__":
+
+    # init params
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_name", help="Model Name (Ex: faster_rcnn_R_50_FPN_3x)",
+                        default='faster_rcnn_R_50_FPN_3x',
+                        type=str)
+
+    parser.add_argument("--root_folder", help="root folder with radiate dataset",
+                        default='../data/radiate/',
+                        type=str)
+
+    parser.add_argument("--max_iter", help="Maximum number of iterations",
+                        default=90000,
+                        type=int)
+
+    parser.add_argument("--resume", help="Whether to resume training or not",
+                        default=False,
+                        type=bool)
+
+    parser.add_argument("--dataset_mode", help="dataset mode ('good_weather', 'good_and_bad_weather')",
+                        default='good_weather',
+                        type=str)
+
+    # parse arguments
+    args = parser.parse_args()
+    model_name = args.model_name
+    root_dir = args.root_folder
+    resume = args.resume
+    dataset_mode = args.dataset_mode
+    max_iter = args.max_iter
+
     train(model_name, root_dir, dataset_mode, max_iter)
